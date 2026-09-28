@@ -32,6 +32,11 @@ get_cpu_usage(){
 
 
 
+log_event(){
+    timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    echo "$timestamp | $*" >> logs/monitor.log
+}
+
 
 
 load_1min=$(awk '{print $1}' /proc/loadavg)
@@ -54,14 +59,16 @@ echo -e "\n\n"
 echo -e "\n Service monitoring"
 # The below is system monitoring related loop
 
-services=("cron" "rsyslog" "systemd-journald")
+services=("cron" "rsyslog" "systemd-journald" "fake_test_service")
 
 for i in "${services[@]}"; do
         status=$(systemctl is-active $i)
 	if [ "$status" = "active" ]; then
 		echo "$i : healthy"
 	else
-		echo -e "$i : Issue in the service\n Status:$(systemctl status $i)"
+		echo "$i : Issue(check logs)"
+		echo "Status: $(systemctl is-active $i)"
+		log_event SERVICE "$i" problem "$status" 
 	fi
 done
 
