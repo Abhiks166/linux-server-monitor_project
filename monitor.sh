@@ -50,5 +50,47 @@ top_process_pid=$(echo "$top_process" | awk '{print $1}')
 top_process_name=$(echo "$top_process" | awk '{print $2}')
 top_process_cpu_usage=$(echo "$top_process" | awk '{print $3}')
 echo -e "\nTop Process Pid       :$top_process_pid\nTop Process Name       :$top_process_name\nTop Process Cpu Usage       :$top_process_cpu_usage"
+echo -e "\n\n"
+echo -e "\n Service monitoring"
+# The below is system monitoring related loop
+
+services=("cron" "rsyslog" "systemd-journald")
+
+for i in "${services[@]}"; do
+        status=$(systemctl is-active $i)
+	if [ "$status" = "active" ]; then
+		echo "$i : healthy"
+	else
+		echo -e "$i : Issue in the service\n Status:$(systemctl status $i)"
+	fi
+done
+
+
 echo -e "\n============================================ "
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
