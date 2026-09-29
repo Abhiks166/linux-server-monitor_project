@@ -1,6 +1,11 @@
 
 #!/bin/bash
 
+if [ ! -f config/monitor.conf ]; then
+	echo "Error: config/monitor.conf not found"
+	exit 1
+fi
+
 source config/monitor.conf
 
 echo -e "============================================ \nLINUX SERVER MONITOR \n============================================  "
@@ -36,8 +41,9 @@ get_cpu_usage(){
 
 
 log_event(){
-    timestamp=$(date '+%Y-%m-%d %H:%M:%S')
-    echo "$timestamp | $*" >> logs/monitor.log
+	mkdir -p logs
+	timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    	echo "$timestamp | $*" >> logs/monitor.log
 }
 
 restart_attempt(){
@@ -106,6 +112,13 @@ echo -e "\n Service monitoring"
 #The service array or list is loaded from config file which is sourced at top of script
 
 for i in "${SERVICES[@]}"; do
+
+	if ! systemctl cat "$i" >/dev/null 2>&1; then
+		echo "$i : Service does not exist"
+		log_event SERVICE "$i" not found
+		continue
+	fi
+
         status=$(systemctl is-active $i)
 	if [ "$status" = "active" ]; then
 		echo "$i : healthy"
