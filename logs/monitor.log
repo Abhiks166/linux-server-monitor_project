@@ -6,3 +6,10 @@ test log entry
 2026-09-28 23:38:59 | SERVICE | fake_test_service | problem | inactive
 2026-09-28 23:38:59 | TEST function works multiple arguments
 2026-09-28 23:41:55 | SERVICE fake_test_service problem inactive
+2026-09-29 19:39:05 | SERVICE fake_test_service problem inactive
+2026-09-29 19:42:11 | SERVICE fake_test_service problem inactive
+2026-09-29 19:43:54 | SERVICE fake_test_service problem inactive
+2026-09-29 19:43:54 | SERVICE fake_test_service recovery_failed 5
+2026-09-29 19:46:25 | SERVICE cron recovered active
+2026-09-29 19:46:25 | SERVICE rsyslog recovered active
+2026-09-29 19:46:25 | SERVICE systemd-journald recovered active

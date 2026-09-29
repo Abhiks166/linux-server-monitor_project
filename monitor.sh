@@ -37,7 +37,26 @@ log_event(){
     echo "$timestamp | $*" >> logs/monitor.log
 }
 
+restart_attempt(){
+	sudo systemctl restart $1
+	result=$?
+	if [ "$result" -eq 0 ]; then
+		echo -e "\nRestarted successfully Code :0"
+		echo -e "Status - $1 :$(systemctl is-active $1)\nChecking status again 		       to validate "
+		new_status=$(systemctl is-active "$1")
+		if [ "$new_status" = "active" ]; then
+    			echo "Recovery successful"
+			log_event SERVICE "$1" recovered active
+		else
+    			echo "Recovery failed"
+			log_event SERVICE "$1" recovery_failed "$result"
+		fi
+	else
+		echo -e "Recovery failed\nCode : $result"
+		log_event SERVICE "$1" recovery_failed "$result"
+	fi
 
+}
 
 load_1min=$(awk '{print $1}' /proc/loadavg)
 mem_total=$(awk '/MemTotal/ {print $2}' /proc/meminfo)
@@ -59,7 +78,7 @@ echo -e "\n\n"
 echo -e "\n Service monitoring"
 # The below is system monitoring related loop
 
-services=("cron" "rsyslog" "systemd-journald" "fake_test_service")
+services=("cron" "rsyslog" "systemd-journald")
 
 for i in "${services[@]}"; do
         status=$(systemctl is-active $i)
@@ -68,7 +87,9 @@ for i in "${services[@]}"; do
 	else
 		echo "$i : Issue(check logs)"
 		echo "Status: $(systemctl is-active $i)"
-		log_event SERVICE "$i" problem "$status" 
+		log_event SERVICE "$i" problem "$status"
+	       	echo "Attempting recovery"
+		restart_attempt $i	
 	fi
 done
 
