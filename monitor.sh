@@ -1,5 +1,8 @@
 
 #!/bin/bash
+
+source config/monitor.conf
+
 echo -e "============================================ \nLINUX SERVER MONITOR \n============================================  "
 echo -e "\n\n"
 
@@ -63,7 +66,29 @@ mem_total=$(awk '/MemTotal/ {print $2}' /proc/meminfo)
 mem_avail=$(awk '/MemAvailable/ {print $2}' /proc/meminfo)
 mem_used=$((mem_total-mem_avail))
 mem_per=$((mem_used *100/mem_total))
+
+if [ "$mem_per" -ge "$RAM_THRESHOLD" ]; then
+	echo "Warning ! : Memory usage high"
+	log_event RESOURCE "Memory HIGH" "$mem_per"
+fi
+
 disk_usage=$(df -h / | awk 'NR==2 {print $5}')
+
+disk_percent=$(echo "$disk_usage" | tr -d '%')
+
+if [ "$disk_percent" -ge "$DISK_THRESHOLD" ]; then
+    echo "WARNING: Disk usage is high"
+    log_event RESOURCE "disk" "high" "$disk_percent%"
+fi
+
+cpu_usage=$(get_cpu_usage)
+
+if [ "$cpu_usage" -ge "$CPU_THRESHOLD" ]; then
+    echo "Warning ! : CPU usage high"
+    log_event RESOURCE "CPU" "HIGH" "$cpu_usage%"
+fi
+
+
 echo -e "Hostname        : $(hostname) \nUser        : $(whoami) \nDate        : $(date) \nSystem        :$(uname)\nLoad Avg        :$load_1min\nCpu usage       :$(get_cpu_usage) %\nMemory Usage        :$mem_per%\nDisk Usage        :$disk_usage"
 echo -e "Uptime       :$(uptime -p)"
 process_count=$(ps -e --no-header | wc -l)
@@ -78,9 +103,9 @@ echo -e "\n\n"
 echo -e "\n Service monitoring"
 # The below is system monitoring related loop
 
-services=("cron" "rsyslog" "systemd-journald")
+#The service array or list is loaded from config file which is sourced at top of script
 
-for i in "${services[@]}"; do
+for i in "${SERVICES[@]}"; do
         status=$(systemctl is-active $i)
 	if [ "$status" = "active" ]; then
 		echo "$i : healthy"
