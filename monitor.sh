@@ -47,25 +47,76 @@ log_event(){
     	echo "$timestamp | $*" >> "$SCRIPT_DIR/logs/monitor.log"
 }
 
-restart_attempt(){
-	sudo systemctl restart $1
-	result=$?
-	if [ "$result" -eq 0 ]; then
-		echo -e "\nRestarted successfully Code :0"
-		echo -e "Status - $1 :$(systemctl is-active $1)\nChecking status again 		       to validate "
-		new_status=$(systemctl is-active "$1")
-		if [ "$new_status" = "active" ]; then
-    			echo "Recovery successful"
-			log_event SERVICE "$1" recovered active
-		else
-    			echo "Recovery failed"
-			log_event SERVICE "$1" recovery_failed "$result"
-		fi
+get_failure_count(){
+    service="$1"
+
+    if grep -q "^$service|" "$SCRIPT_DIR/state/recovery.state"; then
+        grep "^$service|" "$SCRIPT_DIR/state/recovery.state" | cut -d'|' -f2
+    else
+        echo "0"
+    fi
+}
+
+set_failure_count(){
+	service="$1"
+	count="$2"
+
+	if grep -q "^$service|" "$SCRIPT_DIR/state/recovery.state"; then
+		sed -i "s/^$service|.*/$service|$count/" "$SCRIPT_DIR/state/recovery.state"
 	else
-		echo -e "Recovery failed\nCode : $result"
-		log_event SERVICE "$1" recovery_failed "$result"
+		echo "$service|$count" >> "$SCRIPT_DIR/state/recovery.state"
 	fi
 
+}
+
+restart_attempt(){
+    service="$1"
+    fail_count=$(get_failure_count "$service")
+
+    if [ "$fail_count" -ge "$MAX_CONSECUTIVE_FAILURES" ]; then
+        echo "Recovery limit exceeded for service : $service"
+        log_event SERVICE "$service" recovery_limit_exceeded "$fail_count"
+        return 1
+    fi
+
+    attempt=1
+
+    while [ "$attempt" -le "$MAX_RESTART_ATTEMPTS" ]; do
+
+        echo "Recovery attempt $attempt/$MAX_RESTART_ATTEMPTS for $service"
+
+        sudo systemctl restart "$service"
+        result=$?
+
+        if [ "$result" -eq 0 ]; then
+            new_status=$(systemctl is-active "$service")
+
+            if [ "$new_status" = "active" ]; then
+                echo "Recovery successful"
+                log_event SERVICE "$service" recovered active
+                set_failure_count "$service" 0
+                return 0
+            fi
+        fi
+
+        echo "Recovery attempt $attempt failed"
+        log_event SERVICE "$service" recovery_attempt_failed "$attempt" "$result"
+
+        attempt=$((attempt + 1))
+
+        if [ "$attempt" -le "$MAX_RESTART_ATTEMPTS" ]; then
+            sleep "$RECOVERY_DELAY"
+        fi
+
+    done
+
+    fail_count=$((fail_count + 1))
+    set_failure_count "$service" "$fail_count"
+
+    echo "Recovery failed after $MAX_RESTART_ATTEMPTS attempts"
+    log_event SERVICE "$service" recovery_failed "$MAX_RESTART_ATTEMPTS" "consecutive_failures=$fail_count"
+
+    return 1
 }
 
 load_1min=$(awk '{print $1}' /proc/loadavg)
@@ -127,8 +178,18 @@ for i in "${SERVICES[@]}"; do
 		echo "$i : Issue(check logs)"
 		echo "Status: $(systemctl is-active $i)"
 		log_event SERVICE "$i" problem "$status"
-	       	echo "Attempting recovery"
-		restart_attempt $i	
+
+		if [ "$AUTO_RECOVER" = true ]; then
+			echo "Attempting recovery"
+			if restart_attempt "$i"; then
+				echo "$i : Recovery successful"
+			else
+				echo "$i : Recovery failed"
+			fi
+		else
+			echo "Automatic recovery disabled"
+			log_event SERVICE "$i" recovery_disabled
+		fi
 	fi
 done
 

@@ -13,6 +13,9 @@ sudo cp -r config "$INSTALL_DIR/"
 sudo mkdir -p "$INSTALL_DIR/logs"
 sudo chown linux-monitor:linux-monitor "$INSTALL_DIR/logs"
 
+sudo mkdir -p "$INSTALL_DIR/state"
+sudo chown -R linux-monitor:linux-monitor "$INSTALL_DIR/state"
+
 echo "Application files copied."
 
 sudo cp systemd/linux-server-monitor.service /etc/systemd/system/
