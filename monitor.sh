@@ -1,12 +1,14 @@
 
 #!/bin/bash
 
-if [ ! -f config/monitor.conf ]; then
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+if [ ! -f "$SCRIPT_DIR/config/monitor.conf" ]; then
 	echo "Error: config/monitor.conf not found"
 	exit 1
 fi
 
-source config/monitor.conf
+source "$SCRIPT_DIR/config/monitor.conf"
 
 echo -e "============================================ \nLINUX SERVER MONITOR \n============================================  "
 echo -e "\n\n"
@@ -41,9 +43,9 @@ get_cpu_usage(){
 
 
 log_event(){
-	mkdir -p logs
+	mkdir -p "$SCRIPT_DIR/logs"
 	timestamp=$(date '+%Y-%m-%d %H:%M:%S')
-    	echo "$timestamp | $*" >> logs/monitor.log
+    	echo "$timestamp | $*" >> "$SCRIPT_DIR/logs/monitor.log"
 }
 
 restart_attempt(){
