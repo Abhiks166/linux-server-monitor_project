@@ -1,0 +1,10 @@
+[Unit]
+Description=Linux Server Monitor
+
+[Service]
+Type=oneshot
+User=linux-monitor
+Group=linux-monitor
+WorkingDirectory=/opt/linux-server-monitor
+ExecStart=/opt/linux-server-monitor/monitor.sh
+
