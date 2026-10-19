@@ -177,7 +177,11 @@ send_alert(){
     fi
 
     timestamp=$(date '+%Y-%m-%d %H:%M:%S')
-    echo "$timestamp | $level | $message" >> "$ALERT_LOG"
+    
+    if ! echo "$timestamp | $level | $message" >> "$ALERT_LOG"; then
+	 echo "ERROR: Failed to write alert to $ALERT_LOG" >&2
+	 return 1
+    fi
 
     grep -v "^$alert_key|" "$ALERT_STATE" 2>/dev/null > "$ALERT_STATE.tmp" || true
     echo "$alert_key|$now" >> "$ALERT_STATE.tmp"
