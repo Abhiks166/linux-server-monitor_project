@@ -1,0 +1,9 @@
+/opt/linux-server-monitor/logs/monitor.log {
+    size 1M
+    rotate 5
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 0644 linux-monitor linux-monitor
+}

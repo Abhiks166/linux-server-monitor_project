@@ -9,43 +9,151 @@ fi
 
 source "$SCRIPT_DIR/config/monitor.conf"
 
-echo -e "============================================ \nLINUX SERVER MONITOR \n============================================  "
-echo -e "\n\n"
+show_help(){
+    echo "Linux Server Monitor"
+    echo
+    echo "Usage:"
+    echo "  ./monitor.sh                 Run monitoring"
+    echo "  ./monitor.sh --status       Show current system status"
+    echo "  ./monitor.sh --errors       Show WARNING and CRITICAL events"
+    echo "  ./monitor.sh --errors LEVEL Show events for a specific severity"
+    echo "  ./monitor.sh --help         Show this help message"
+    echo
+    echo "Valid severity levels:"
+    echo "  WARNING"
+    echo "  CRITICAL"
+}
+
+show_errors(){
+    if [ ! -f "$SCRIPT_DIR/logs/monitor.log" ]; then
+        echo "No log file found."
+        return 0
+    fi
+
+    level=$1
+
+    if [ -n "$level" ] && [ "$level" != "WARNING" ] && [ "$level" != "CRITICAL" ]; then
+        echo "Invalid severity: $level"
+        echo "Valid values: WARNING, CRITICAL"
+        return 1
+    fi
+
+    if [ -z "$level" ]; then
+        grep -E '\| WARNING \||\| CRITICAL \|' "$SCRIPT_DIR/logs/monitor.log"
+    else
+        grep -E "\| $level \|" "$SCRIPT_DIR/logs/monitor.log"
+    fi
+}
+
 
 get_cpu_usage(){
-	cpu1=$(head -n 1 /proc/stat)
-	sleep 1
-	
-	cpu2=$(head -n 1 /proc/stat)
-	total1=$(echo "$cpu1" | awk '
-	{sum=0;
-       	for(i=2;i<=9;i++) sum+=$i;
-	print sum}')
+    cpu1=$(head -n 1 /proc/stat)
+    sleep 1
+    cpu2=$(head -n 1 /proc/stat)
 
-	idle_total1=$(echo "$cpu1" | awk '{print $5+$6}')
+    total1=$(echo "$cpu1" | awk '{sum=0; for(i=2;i<=NF;i++) sum+=$i; print sum}')
+    idle1=$(echo "$cpu1" | awk '{print $5+$6}')
 
-	total2=$(echo "$cpu2" | awk '
-	{sum =0;
-	for(i=2;i<=9;i++) sum+=$i
-	print sum}')
+    total2=$(echo "$cpu2" | awk '{sum=0; for(i=2;i<=NF;i++) sum+=$i; print sum}')
+    idle2=$(echo "$cpu2" | awk '{print $5+$6}')
 
-	 idle_total2=$(echo "$cpu2" | awk '{print $5+$6}')
+    total_delta=$((total2 - total1))
+    idle_delta=$((idle2 - idle1))
 
-	 total_delta=$((total2-total1))
-	 idle_delta=$((idle_total2-idle_total1))
+    cpu_usage=$(( (total_delta - idle_delta) * 100 / total_delta ))
 
-	 cpu_usage=$(( (total_delta-idle_delta)*100/total_delta ))
-
-	 echo "$cpu_usage"
+    echo "$cpu_usage"
 }
 
 
+
+show_status(){
+    echo "============================================"
+    echo "LINUX SERVER STATUS"
+    echo "============================================"
+
+    echo
+    echo "Hostname : $(hostname)"
+    echo "Uptime   : $(uptime -p)"
+    load_avg=$(awk '{print $1}' /proc/loadavg)
+    cpu_usage=$(get_cpu_usage)
+
+    echo "Load Avg : $load_avg"
+    echo "CPU      : $cpu_usage%"
+    mem_total=$(awk '/MemTotal/ {print $2}' /proc/meminfo)
+    mem_avail=$(awk '/MemAvailable/ {print $2}' /proc/meminfo)
+    mem_used=$((mem_total - mem_avail))
+    mem_per=$((mem_used * 100 / mem_total))
+
+    disk_usage=$(df -h / | awk 'NR==2 {print $5}')
+
+    echo "Memory   : $mem_per%"
+    echo "Disk     : $disk_usage"
+
+    process_count=$(ps -e --no-headers | wc -l)
+
+    top_process=$(ps -eo pid,comm,%cpu --sort=-%cpu | head -n 2 | tail -n 1)
+    top_process_name=$(echo "$top_process" | awk '{print $2}')
+    top_process_cpu=$(echo "$top_process" | awk '{print $3}')
+
+    echo "Processes: $process_count"
+    echo "Top Process: $top_process_name ($top_process_cpu%)"
+
+
+
+    echo
+    echo "Services"
+    echo "--------------------------------------------"
+
+    for i in "${SERVICES[@]}"; do
+        if ! systemctl cat "$i" >/dev/null 2>&1; then
+            echo "$i : NOT FOUND"
+            continue
+        fi
+
+        status=$(systemctl is-active "$i")
+
+        if [ "$status" = "active" ]; then
+            echo "$i : active"
+        else
+            echo "$i : $status"
+        fi
+    done
+
+    echo "============================================"
+}
+
+
+if [ "$1" = "--help" ]; then
+    show_help
+    exit 0
+fi
+
+if [ "$1" = "--errors" ]; then
+	show_errors "$2"
+	exit $?
+fi
+
+if [ "$1" = "--status" ]; then
+    show_status
+    exit 0
+fi
+
+
+
+echo -e "============================================ \nLINUX SERVER MONITOR \n============================================  "
+echo -e "\n \n"
 
 log_event(){
-	mkdir -p "$SCRIPT_DIR/logs"
-	timestamp=$(date '+%Y-%m-%d %H:%M:%S')
-    	echo "$timestamp | $*" >> "$SCRIPT_DIR/logs/monitor.log"
+    level="$1"
+    shift
+
+    mkdir -p "$SCRIPT_DIR/logs"
+    timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+
+    echo "$timestamp | $level | $*" >> "$SCRIPT_DIR/logs/monitor.log"
 }
+
 
 get_failure_count(){
     service="$1"
@@ -75,7 +183,7 @@ restart_attempt(){
 
     if [ "$fail_count" -ge "$MAX_CONSECUTIVE_FAILURES" ]; then
         echo "Recovery limit exceeded for service : $service"
-        log_event SERVICE "$service" recovery_limit_exceeded "$fail_count"
+        log_event CRITICAL "SERVICE $service recovery_limit_reached failures=$fail_count"
         return 1
     fi
 
@@ -93,14 +201,14 @@ restart_attempt(){
 
             if [ "$new_status" = "active" ]; then
                 echo "Recovery successful"
-                log_event SERVICE "$service" recovered active
+                log_event INFO "SERVICE $service recovered"
                 set_failure_count "$service" 0
                 return 0
             fi
         fi
 
         echo "Recovery attempt $attempt failed"
-        log_event SERVICE "$service" recovery_attempt_failed "$attempt" "$result"
+        log_event WARNING "SERVICE $service recovery_attempt_failed attempt=$attempt code=$result"
 
         attempt=$((attempt + 1))
 
@@ -114,7 +222,7 @@ restart_attempt(){
     set_failure_count "$service" "$fail_count"
 
     echo "Recovery failed after $MAX_RESTART_ATTEMPTS attempts"
-    log_event SERVICE "$service" recovery_failed "$MAX_RESTART_ATTEMPTS" "consecutive_failures=$fail_count"
+    log_event CRITICAL "SERVICE $service recovery_failed attempts=$MAX_RESTART_ATTEMPTS consecutive_failures=$fail_count"
 
     return 1
 }
@@ -127,7 +235,8 @@ mem_per=$((mem_used *100/mem_total))
 
 if [ "$mem_per" -ge "$RAM_THRESHOLD" ]; then
 	echo "Warning ! : Memory usage high"
-	log_event RESOURCE "Memory HIGH" "$mem_per"
+	#log_event RESOURCE "Memory HIGH" "$mem_per
+	log_event WARNING "RESOURCE memory high usage=${mem_per}%"
 fi
 
 disk_usage=$(df -h / | awk 'NR==2 {print $5}')
@@ -136,14 +245,16 @@ disk_percent=$(echo "$disk_usage" | tr -d '%')
 
 if [ "$disk_percent" -ge "$DISK_THRESHOLD" ]; then
     echo "WARNING: Disk usage is high"
-    log_event RESOURCE "disk" "high" "$disk_percent%"
+    #log_event RESOURCE "disk" "high" "$disk_percent%"
+    log_event WARNING "RESOURCE disk high usage=${disk_percent}%"
 fi
 
 cpu_usage=$(get_cpu_usage)
 
 if [ "$cpu_usage" -ge "$CPU_THRESHOLD" ]; then
     echo "Warning ! : CPU usage high"
-    log_event RESOURCE "CPU" "HIGH" "$cpu_usage%"
+    #log_event RESOURCE "CPU" "HIGH" "$cpu_usage%"
+    log_event WARNING "RESOURCE CPU high usage=${cpu_usage}%"
 fi
 
 
@@ -167,7 +278,7 @@ for i in "${SERVICES[@]}"; do
 
 	if ! systemctl cat "$i" >/dev/null 2>&1; then
 		echo "$i : Service does not exist"
-		log_event SERVICE "$i" not found
+		log_event WARNING "SERVICE $i not_found"
 		continue
 	fi
 
@@ -177,18 +288,21 @@ for i in "${SERVICES[@]}"; do
 	else
 		echo "$i : Issue(check logs)"
 		echo "Status: $(systemctl is-active $i)"
-		log_event SERVICE "$i" problem "$status"
+		# log_event SERVICE "$i" problem "$status"
+		log_event WARNING "SERVICE $i problem $status"
 
 		if [ "$AUTO_RECOVER" = true ]; then
 			echo "Attempting recovery"
 			if restart_attempt "$i"; then
 				echo "$i : Recovery successful"
+
 			else
 				echo "$i : Recovery failed"
 			fi
 		else
 			echo "Automatic recovery disabled"
-			log_event SERVICE "$i" recovery_disabled
+			#log_event SERVICE "$i" recovery_disabled
+			log_event INFO "SERVICE $i recovery_disabled"
 		fi
 	fi
 done
