@@ -9,6 +9,8 @@ fi
 
 source "$SCRIPT_DIR/config/monitor.conf"
 
+ALERT_LOG="$SCRIPT_DIR/logs/alerts.log"
+
 show_help(){
     echo "Linux Server Monitor"
     echo
@@ -155,6 +157,17 @@ log_event(){
 }
 
 
+send_alert(){
+    level="$1"
+    shift
+    message="$*"
+
+    mkdir -p "$(dirname "$ALERT_LOG")"
+    timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+
+    echo "$timestamp | $level | $message" >> "$ALERT_LOG"
+}
+
 get_failure_count(){
     service="$1"
 
@@ -184,7 +197,8 @@ restart_attempt(){
     if [ "$fail_count" -ge "$MAX_CONSECUTIVE_FAILURES" ]; then
         echo "Recovery limit exceeded for service : $service"
         log_event CRITICAL "SERVICE $service recovery_limit_reached failures=$fail_count"
-        return 1
+        send_alert CRITICAL "SERVICE $service recovery_limit_reached failures=$fail_count"
+	return 1
     fi
 
     attempt=1
@@ -223,7 +237,7 @@ restart_attempt(){
 
     echo "Recovery failed after $MAX_RESTART_ATTEMPTS attempts"
     log_event CRITICAL "SERVICE $service recovery_failed attempts=$MAX_RESTART_ATTEMPTS consecutive_failures=$fail_count"
-
+    send_alert CRITICAL "SERVICE $service recovery_failed attempts=$MAX_RESTART_ATTEMPTS consecutive_failures=$fail_count"
     return 1
 }
 

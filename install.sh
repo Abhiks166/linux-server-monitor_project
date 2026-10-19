@@ -85,6 +85,7 @@ if sudo install -o root -g root -m 0644 \
             /etc/logrotate.d/linux-server-monitor
 
         echo "Log rotation configuration installed."
+	sudo rm -f "$TEMP_CONFIG"
     else
         echo "ERROR: Logrotate configuration validation failed."
         sudo rm -f "$TEMP_CONFIG"

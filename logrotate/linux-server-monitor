@@ -7,3 +7,13 @@
     notifempty
     create 0644 linux-monitor linux-monitor
 }
+
+/opt/linux-server-monitor/logs/alerts.log {
+    size 1M
+    rotate 5
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 0644 linux-monitor linux-monitor
+}
