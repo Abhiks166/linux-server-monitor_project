@@ -11,6 +11,8 @@ source "$SCRIPT_DIR/config/monitor.conf"
 
 ALERT_LOG="$SCRIPT_DIR/logs/alerts.log"
 
+ALERT_STATE="$SCRIPT_DIR/state/alerts.state"
+
 show_help(){
     echo "Linux Server Monitor"
     echo
@@ -163,9 +165,23 @@ send_alert(){
     message="$*"
 
     mkdir -p "$(dirname "$ALERT_LOG")"
-    timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    mkdir -p "$(dirname "$ALERT_STATE")"
 
+    now=$(date +%s)
+    alert_key=$(printf '%s' "$level|$message" | sha256sum | awk '{print $1}')
+
+    last_sent=$(awk -F '|' -v key="$alert_key" '$1 == key {print $2}' "$ALERT_STATE" 2>/dev/null)
+
+    if [ -n "$last_sent" ] && [ "$((now - last_sent))" -lt "$ALERT_COOLDOWN" ]; then
+        return 0
+    fi
+
+    timestamp=$(date '+%Y-%m-%d %H:%M:%S')
     echo "$timestamp | $level | $message" >> "$ALERT_LOG"
+
+    grep -v "^$alert_key|" "$ALERT_STATE" 2>/dev/null > "$ALERT_STATE.tmp" || true
+    echo "$alert_key|$now" >> "$ALERT_STATE.tmp"
+    mv "$ALERT_STATE.tmp" "$ALERT_STATE"
 }
 
 get_failure_count(){
