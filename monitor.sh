@@ -177,15 +177,46 @@ send_alert(){
     fi
 
     timestamp=$(date '+%Y-%m-%d %H:%M:%S')
-    
+
     if ! echo "$timestamp | $level | $message" >> "$ALERT_LOG"; then
-	 echo "ERROR: Failed to write alert to $ALERT_LOG" >&2
-	 return 1
+        echo "ERROR: Failed to write alert to $ALERT_LOG" >&2
+        return 1
     fi
 
     grep -v "^$alert_key|" "$ALERT_STATE" 2>/dev/null > "$ALERT_STATE.tmp" || true
     echo "$alert_key|$now" >> "$ALERT_STATE.tmp"
     mv "$ALERT_STATE.tmp" "$ALERT_STATE"
+    send_webhook "$level" "$message"
+}
+
+send_webhook(){
+    local level="$1"
+    local message="$2"
+
+    if [ "$WEBHOOK_ENABLED" != "true" ] || [ -z "$WEBHOOK_URL" ]; then
+        return 0
+    fi
+
+    if ! command -v curl >/dev/null 2>&1; then
+        echo "WARNING: curl is unavailable; webhook not sent" >&2
+        return 0
+    fi
+
+    if ! command -v jq >/dev/null 2>&1; then
+        echo "WARNING: jq is unavailable; webhook not sent" >&2
+        return 0
+    fi
+
+    if ! curl --silent --fail \
+        --connect-timeout 5 --max-time 10 \
+        -H "Content-Type: application/json" \
+        -d "$(jq -n --arg level "$level" --arg message "$message" \
+        '{level: $level, message: $message}')" \
+        "$WEBHOOK_URL" >/dev/null; then
+        echo "WARNING: Webhook delivery failed" >&2
+    fi
+
+    return 0
 }
 
 get_failure_count(){
